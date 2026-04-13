@@ -176,6 +176,50 @@ export namespace SessionCompaction {
           }
         }
 
+        //find original prompt
+        let orig_prompt: string | undefined = undefined;
+        log.info("orig_prompt: "+orig_prompt )
+
+        for (let i = 0; i < input.messages.length; i++) {
+          const msg = input.messages[i]
+          if (msg.info.role === "user" && msg.parts.length === 1 && msg.parts[0].type === "compaction") {
+            //log.info("Found1: ", { "o": msg } )
+            if (msg.parts[0].orig_prompt != "") {
+              orig_prompt = msg.parts[0].orig_prompt
+              break
+            }
+          }
+        }
+
+        if (!orig_prompt) {
+          for (let i = 0; i < input.messages.length; i++) {
+            const msg = input.messages[i]
+            if (msg.info.role === "user" && msg.parts.length === 1 && msg.parts[0].type === "text") {
+              //log.info("Found2: " ,{ "o": msg } )
+              orig_prompt = msg.parts[0].text
+              break
+            }
+          }
+        }
+        
+        for (let i = 0; i < input.messages.length; i++) {
+          const msg = input.messages[i]
+          if (msg.info.role === "user" && msg.parts.length === 1 && msg.parts[0].type === "compaction") {
+            let p = msg.parts[0]
+            p.orig_prompt = orig_prompt
+            //log.info("Update1: ", { "o": msg } )
+            yield* session.updatePart({
+              ...p,
+              id: p.id,
+              messageID: msg.info.id,
+              sessionID: input.sessionID,
+            })
+          }
+        }
+        
+
+        //!find orignal prompt
+
         const agent = yield* agents.get("compaction")
         const model = agent.model
           ? yield* provider.getModel(agent.model.providerID, agent.model.modelID)
@@ -219,7 +263,7 @@ When constructing the summary, try to stick to this template:
         const prompt = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
         const msgs = structuredClone(messages)
         yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-        const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, { stripMedia: true })
+        const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, { stripMedia: true, agent: "compaction" })
         const ctx = yield* InstanceState.context
         const msg: MessageV2.Assistant = {
           id: MessageID.ascending(),
@@ -309,6 +353,33 @@ When constructing the summary, try to stick to this template:
             }
           }
 
+          //test
+          log.info("TESTREMOVE")
+          const msgs_after_compact = yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
+
+          if (msgs_after_compact) {
+
+            for (const message of msgs_after_compact) {
+              if (message.info.role === "assistant") {
+                let parts = structuredClone(message.parts)
+                for (const part of parts) {
+                  if (part.type === "reasoning") {
+                    log.info("FOUND: "+part)
+                    part.text = "[redacted]"
+                    yield* session.updatePart({
+                      ...part,
+                      id: part.id,
+                      messageID: message.info.id,
+                      sessionID: input.sessionID,
+                    })
+                  }
+                }
+              }
+            }
+          }
+  
+          //!test
+
           if (!replay) {
             const continueMsg = yield* session.updateMessage({
               id: MessageID.ascending(),
@@ -322,7 +393,7 @@ When constructing the summary, try to stick to this template:
               (input.overflow
                 ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
                 : "") +
-              "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed."
+              "Please continue and only stop if you double-checked that my original request is completely and doubtlessly satisfied."
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: continueMsg.id,
@@ -365,6 +436,7 @@ When constructing the summary, try to stick to this template:
           type: "compaction",
           auto: input.auto,
           overflow: input.overflow,
+          orig_prompt: ""
         })
       })
 

@@ -15,6 +15,7 @@ import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
 import { Effect } from "effect"
+import { strict } from "yargs"
 
 /** Error shape thrown by Bun's fetch() when gzip/br decompression fails mid-stream */
 interface FetchDecompressionError extends Error {
@@ -208,6 +209,7 @@ export namespace MessageV2 {
     type: z.literal("compaction"),
     auto: z.boolean(),
     overflow: z.boolean().optional(),
+    orig_prompt: z.string(),
   }).meta({
     ref: "CompactionPart",
   })
@@ -582,7 +584,7 @@ export namespace MessageV2 {
   export const toModelMessagesEffect = Effect.fnUntraced(function* (
     input: WithParts[],
     model: Provider.Model,
-    options?: { stripMedia?: boolean },
+    options?: { stripMedia?: boolean, agent?: string },
   ) {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
@@ -675,10 +677,17 @@ export namespace MessageV2 {
           }
 
           if (part.type === "compaction") {
-            userMessage.parts.push({
-              type: "text",
-              text: "What did we do so far?",
-            })
+            if (options?.agent === "compaction") {
+              userMessage.parts.push({
+                type: "text",
+                text: "[END]",
+              })              
+            } else {
+              userMessage.parts.push({
+                type: "text",
+                text: "We are continuing with compacted context. Below is my original prompt **plus** additional guidance which you should consider please." + part.orig_prompt,
+              })
+            }
           }
           if (part.type === "subtask") {
             userMessage.parts.push({
