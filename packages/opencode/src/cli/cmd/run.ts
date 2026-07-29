@@ -259,6 +259,10 @@ export const RunCommand = effectCmd({
         default: false,
         hidden: true,
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
+      })
+      .option("token-limit-input", {
+        type: "number",
+        describe: "Context/prompt token size limit (> 0). Exits if context window exceeds this threshold.",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
@@ -314,6 +318,11 @@ export const RunCommand = effectCmd({
         (!Number.isInteger(args["replay-limit"]) || args["replay-limit"] <= 0)
       ) {
         die("--replay-limit must be a positive integer")
+      }
+
+      const tokenLimitInput = args["token-limit-input"]
+      if (tokenLimitInput !== undefined && (isNaN(tokenLimitInput) || tokenLimitInput <= 0)) {
+        die("--token-limit-input must be a positive number greater than 0")
       }
 
       if (interactive && !process.stdout.isTTY) {
@@ -694,11 +703,25 @@ export const RunCommand = effectCmd({
         // to stdout/UI. `client` is passed explicitly because attach mode may
         // rebind the SDK to the session's directory after the subscription is
         // created, and replies issued from inside the loop must use that client.
-        async function loop(client: OpencodeClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
-          const toggles = new Map<string, boolean>()
-          let error: string | undefined
+        function calculateContextTokens(tokens?: {
+        input?: number
+        output?: number
+        cache?: { read?: number; write?: number }
+      }): number {
+        if (!tokens) return 0
 
-          for await (const event of events.stream) {
+        const input = tokens.input ?? 0
+        const cacheRead = tokens.cache?.read ?? 0
+        const output = tokens.output ?? 0
+
+        return input + cacheRead + output
+      }
+
+      async function loop(client: OpencodeClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
+        const toggles = new Map<string, boolean>()
+        let error: string | undefined
+
+        for await (const event of events.stream) {
             if (
               event.type === "message.updated" &&
               event.properties.sessionID === sessionID &&
@@ -742,7 +765,28 @@ export const RunCommand = effectCmd({
               }
 
               if (part.type === "step-finish") {
-                if (emit("step_finish", { part })) continue
+                
+                if (tokenLimitInput && part.tokens && part.tokens.input && part.tokens.input >= tokenLimitInput) {
+                  if (args.format === "json") {
+                    console.log(
+                      JSON.stringify({
+                        type: "context_token_limit_exceeded",
+                        contextTokens: part.tokens.input,
+                        tokenLimitInput,
+                      })
+                    )
+                  } else {
+                    console.log(
+                      `\n[OpenCode] Context token limit reached: ${part.tokens.input} tokens (Limit: ${tokenLimitInput}). Exiting...`
+                    )
+                  }
+
+                  emit("step_finish", { part })
+                  await client.session.abort({ sessionID }).catch(() => {})
+                  process.exit(0)
+                } else {
+                  if (emit("step_finish", { part })) continue
+                }
               }
 
               if (part.type === "text" && part.time?.end) {
