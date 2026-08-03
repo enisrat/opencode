@@ -1,2 +1,5 @@
-Replace a range of lines in a file with new content. The range is specified as `[start, end)` where start is inclusive and end is exclusive. If start equals end, the content is inserted at that position. Line numbers are 1-indexed.
-Using empty content will remove lines. Using a range `[start, start)` will insert content.
+- Replace a range of lines in a file with new content. 
+- The range is specified as `[start, end)` where start is inclusive and end is exclusive. 
+  - If start equals end, the content is inserted at that position. Line numbers are 1-indexed.
+  - Using empty content will remove lines. 
+- You must use your `Read` tool at least once in the conversation before editing.
