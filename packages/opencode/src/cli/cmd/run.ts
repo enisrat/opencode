@@ -783,7 +783,7 @@ export const RunCommand = effectCmd({
 
                   emit("step_finish", { part })
                   await client.session.abort({ sessionID }).catch(() => {})
-                  process.exit(0)
+                  process.exit(77)
                 } else {
                   if (emit("step_finish", { part })) continue
                 }
