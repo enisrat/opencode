@@ -13,7 +13,7 @@ const prefixes = {
   workspace: "wrk",
 } as const
 
-const LENGTH = 26
+const LENGTH = 14
 
 // State for monotonic ID generation
 let lastTimestamp = 0
