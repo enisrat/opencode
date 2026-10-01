@@ -396,13 +396,42 @@ describe("tool.read truncation", () => {
     }),
   )
 
-  it.live("respects offset parameter", () =>
+  it.live("omits line numbers by default (showLineNumbers: false)", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      yield* put(path.join(dir, "test.txt"), "123\n456\n789")
+
+      const result = yield* exec(dir, { filePath: path.join(dir, "test.txt") })
+      expect(result.output).toBe(
+        `<path>${path.join(dir, "test.txt")}</path>\n<type>file</type>\n<content>\n123\n456\n789\n\n(End of file - total 3 lines)\n</content>`,
+      )
+    }),
+  )
+
+  it.live("includes line numbers when showLineNumbers is true", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      yield* put(path.join(dir, "test.txt"), "123\n456\n789")
+
+      const result = yield* exec(dir, { filePath: path.join(dir, "test.txt"), showLineNumbers: true })
+      expect(result.output).toBe(
+        `<path>${path.join(dir, "test.txt")}</path>\n<type>file</type>\n<content>\n1: 123\n2: 456\n3: 789\n\n(End of file - total 3 lines)\n</content>`,
+      )
+    }),
+  )
+
+  it.live("respects offset parameter with line numbers when showLineNumbers is true", () =>
     Effect.gen(function* () {
       const dir = yield* tmpdirScoped()
       const lines = Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join("\n")
       yield* put(path.join(dir, "offset.txt"), lines)
 
-      const result = yield* exec(dir, { filePath: path.join(dir, "offset.txt"), offset: 10, limit: 5 })
+      const result = yield* exec(dir, {
+        filePath: path.join(dir, "offset.txt"),
+        offset: 10,
+        limit: 5,
+        showLineNumbers: true,
+      })
       expect(result.output).toContain("10: line10")
       expect(result.output).toContain("14: line14")
       expect(result.output).not.toContain("9: line10")

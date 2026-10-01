@@ -33,6 +33,9 @@ export const Parameters = Schema.Struct({
   limit: Schema.optional(NonNegativeInt).annotate({
     description: "The maximum number of lines to read (defaults to 2000)",
   }),
+  showLineNumbers: Schema.optional(Schema.Boolean).annotate({
+    description: "Prefix each line in output with its number (defaults to false)",
+  }),
 })
 
 type Display =
@@ -336,7 +339,9 @@ export const ReadTool = Tool.define<
       }
 
       let output = [`<path>${filepath}</path>`, `<type>file</type>`, "<content>\n"].join("\n")
-      output += file.raw.map((line, i) => `${i + file.offset}: ${line}`).join("\n")
+      output += params.showLineNumbers
+        ? file.raw.map((line, i) => `${i + file.offset}: ${line}`).join("\n")
+        : file.raw.join("\n")
 
       const last = file.offset + file.raw.length - 1
       const next = last + 1
