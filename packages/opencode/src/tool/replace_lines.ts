@@ -47,15 +47,45 @@ export const ReplaceLinesTool = Tool.define(
 
           const source = yield* Bom.readFile(fs, filepath)
           const contentOld = source.text
-          const lines = contentOld.split("\n")
+          const hasTrailingNewline = contentOld.endsWith("\n")
+          const rawText = hasTrailingNewline
+            ? contentOld.endsWith("\r\n")
+              ? contentOld.slice(0, -2)
+              : contentOld.slice(0, -1)
+            : contentOld
 
-          const start = Math.max(1, Math.min(params.start, lines.length + 1))
-          const end = Math.max(start, Math.min(params.end, lines.length + 1))
+          const lines = contentOld === "" ? [] : rawText.split("\n")
 
-          const beforeLines = lines.slice(0, start - 1)
-          const afterLines = lines.slice(end - 1)
-          const newLines = params.content === "" ? [] : params.content.split("\n")
-          const contentNew = [...beforeLines, ...newLines, ...afterLines].join("\n")
+          let contentNew: string
+          const outOfBounds = params.start > lines.length
+          if (outOfBounds) {
+            if (contentOld === "") {
+              contentNew = params.content
+            } else if (hasTrailingNewline) {
+              const appended = contentOld + params.content
+              contentNew = !appended.endsWith("\n") ? appended + "\n" : appended
+            } else {
+              contentNew = contentOld + "\n" + params.content
+            }
+          } else {
+            const start = Math.max(1, params.start)
+            const end = Math.max(start, Math.min(params.end, lines.length + 1))
+
+            const beforeLines = lines.slice(0, start - 1)
+            const afterLines = lines.slice(end - 1)
+
+            let formattedContent = params.content
+            if (formattedContent.endsWith("\n")) {
+              formattedContent = formattedContent.endsWith("\r\n")
+                ? formattedContent.slice(0, -2)
+                : formattedContent.slice(0, -1)
+            }
+            const newLines = params.content === "" ? [] : formattedContent.split("\n")
+
+            const joined = [...beforeLines, ...newLines, ...afterLines].join("\n")
+            const preserveTrailingNewline = hasTrailingNewline || params.content.endsWith("\n")
+            contentNew = joined === "" ? "" : joined + (preserveTrailingNewline ? "\n" : "")
+          }
 
           const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, contentNew))
           yield* ctx.ask({
@@ -80,7 +110,9 @@ export const ReplaceLinesTool = Tool.define(
             event: "change",
           })
 
-          let output = "Lines replaced successfully."
+          let output = outOfBounds
+            ? `Content appended to end of file (start line ${params.start} exceeded total lines ${lines.length}).`
+            : "Lines replaced successfully."
           yield* lsp.touchFile(filepath, "document")
           const diagnostics = yield* lsp.diagnostics()
           const normalizedFilepath = FSUtil.normalizePath(filepath)

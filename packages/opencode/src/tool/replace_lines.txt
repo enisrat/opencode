@@ -2,4 +2,5 @@
 - The range is specified as `[start, end)` where start is inclusive and end is exclusive. 
   - If start equals end, the content is inserted at that position. Line numbers are 1-indexed.
   - Using empty content will remove lines. 
+  - If start is out-of-bounds (greater than total line count), the content is appended verbatim to the end of the file.
 - You must use your `Read` tool at least once in the conversation before editing.
