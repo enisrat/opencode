@@ -21,6 +21,7 @@ describe("acp tool conversion", () => {
     expect(toToolKind("apply_patch")).toBe("edit")
     expect(toToolKind("patch")).toBe("edit")
     expect(toToolKind("write")).toBe("edit")
+    expect(toToolKind("replace_lines")).toBe("edit")
     expect(toToolKind("grep")).toBe("search")
     expect(toToolKind("glob")).toBe("search")
     expect(toToolKind("context7_resolve_library_id")).toBe("search")
